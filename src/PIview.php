@@ -46,6 +46,14 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
 			return $arr;
 		}
 	}
+    
+    public function piRequest($arr,$isDebugging=TRUE){
+        $debugArr=array('arr in'=>$arr);
+        if ($isDebugging){
+            $this->oc['SourcePot\Datapool\Tools\MiscTools']->arr2file($debugArr);
+        }
+        return $arr;
+    }
 
 }
 ?>
