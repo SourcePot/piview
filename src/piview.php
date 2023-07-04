@@ -39,7 +39,7 @@ class piview implements \SourcePot\Datapool\Interfaces\App{
 
 	public function run(array|bool $arr=TRUE):array{
 		if ($arr===TRUE){
-			return array('Category'=>'Apps','Emoji'=>'	&Pi;','Label'=>'PI view','Read'=>'ALL_MEMBER_R','Class'=>__CLASS__);
+			return array('Category'=>'Apps','Emoji'=>'&Pi;','Label'=>'PI view','Read'=>'ALL_MEMBER_R','Class'=>__CLASS__);
 		} else {
 			$html='This will be the PI view';
 			$arr['toReplace']['{{content}}']=$html;
