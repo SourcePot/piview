@@ -9,9 +9,6 @@
 	"require":{
 		"php":">=8.0"
 	},
-	"require-dev":{
-		"sourcepot/datapool":">=v1.0.6"
-	},
 	"autoload":{
 		"psr-4":{
 			"SourcePot\\PIview\\":"src/"
