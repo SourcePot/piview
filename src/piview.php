@@ -10,7 +10,7 @@ declare(strict_types=1);
 
 namespace SourcePot\PIview;
 
-class piview implements \SourcePot\Datapool\Interfaces\App{
+class PIview implements \SourcePot\Datapool\Interfaces\App{
 	
 	private $oc;
 	
