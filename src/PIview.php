@@ -134,7 +134,7 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
         if (isset($this->distinctGroupsAndFolders[$selected['Group']])){
             // Group selected
             $imgShuffle=array('wrapperSetting'=>array('style'=>array('float'=>'none','padding'=>'10px','border'=>'none','margin'=>'10px auto','border'=>'1px dotted #999;')),
-                              'setting'=>array('hideReloadBtn'=>TRUE,'orderBy'=>'Date','isAsc'=>FALSE,'limit'=>20,'style'=>array('width'=>500,'height'=>400),'autoShuffle'=>FALSE,'getImageShuffle'=>'home'),
+                              'setting'=>array('hideReloadBtn'=>TRUE,'orderBy'=>'Date','isAsc'=>FALSE,'limit'=>20,'style'=>array('width'=>500,'height'=>400),'autoShuffle'=>FALSE,'getImageShuffle'=>'PIview'),
                               'selector'=>array(),
                               );
             $html.=$this->oc['SourcePot\Datapool\Tools\HTMLbuilder']->element(array('tag'=>'h2','element-content'=>'Client Group'.$selected['Group'],'keep-element-content'=>TRUE));
@@ -177,7 +177,6 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
                         }
                     }
                 } // loop through folder
-                $this->oc['SourcePot\Datapool\Tools\MiscTools']->arr2file($matrix);
                 $arr['html'].=$this->oc['SourcePot\Datapool\Tools\HTMLbuilder']->table(array('matrix'=>$matrix,'hideHeader'=>FALSE,'hideKeys'=>FALSE,'caption'=>$group,'keep-element-content'=>TRUE));
             } // loop through groups
         }
