@@ -64,7 +64,7 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
         $debugArr=array('arr'=>$arr,'_FILES'=>$_FILES);
         $piEntry=$this->oc['SourcePot\Datapool\Tools\MiscTools']->flat2arr($arr,'||');
         $piEntry['Source']=$this->entryTable;
-        $piEntry['Expires']=(isset($arr['Expires']))?$arr['Expires']:$this->oc['SourcePot\Datapool\Tools\MiscTools']->getDateTime('now','PT10M');
+        $piEntry['Expires']=(isset($arr['Expires']))?$arr['Expires']:$this->oc['SourcePot\Datapool\Tools\MiscTools']->getDateTime('now','P10D');
         if (isset($piEntry['Content']['timestamp'])){
             $pageSettings=$this->oc['SourcePot\Datapool\Foundation\Backbone']->getSettings();
             $piEntryDateTime=new \DateTime('@'.$piEntry['Content']['timestamp']);
