@@ -119,6 +119,7 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
             $statusHtml.=$this->oc['SourcePot\Datapool\Tools\HTMLbuilder']->element(array('tag'=>'button','element-content'=>'Select '.$selector['Group'],'keep-element-content'=>TRUE,'key'=>array('select',$selector['Group']),'callingClass'=>__CLASS__,'callingFunction'=>__FUNCTION__));
 		    $html.=$this->oc['SourcePot\Datapool\Tools\HTMLbuilder']->element(array('tag'=>'div','element-content'=>$statusHtml,'keep-element-content'=>TRUE,'style'=>array('clear'=>'none','margin'=>'10px')));
         }
+        $html=$this->oc['SourcePot\Datapool\Tools\HTMLbuilder']->element(array('tag'=>'article','element-content'=>$html,'keep-element-content'=>TRUE));    
         $selector=$this->oc['SourcePot\Datapool\Tools\NetworkTools']->getPageState(__CLASS__);
         $selector['Source']=$this->entryTable;
         $formData=$this->oc['SourcePot\Datapool\Foundation\Element']->formProcessing(__CLASS__,__FUNCTION__);
@@ -165,8 +166,8 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
                     }
                 }
             }
-            $arr['html'].=$this->oc['SourcePot\Datapool\Tools\HTMLbuilder']->table(array('matrix'=>$matrix,'hideHeader'=>FALSE,'hideKeys'=>FALSE,'caption'=>$arr['selector']['Group'],'keep-element-content'=>TRUE));
         } // loop through folder
+        $arr['html'].=$this->oc['SourcePot\Datapool\Tools\HTMLbuilder']->table(array('matrix'=>$matrix,'hideHeader'=>FALSE,'hideKeys'=>FALSE,'caption'=>$arr['selector']['Group'],'keep-element-content'=>TRUE));
         if ($isDebugging){
             $debugArr['distinctGroupsAndFolders']=$this->distinctGroupsAndFolders;
             $this->oc['SourcePot\Datapool\Tools\MiscTools']->arr2file($debugArr);
@@ -195,7 +196,7 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
                 $imgShuffle['selector']['Type']='%piMedia%';
                 $folderHtml.=$this->oc['SourcePot\Datapool\Foundation\Container']->container('CCTV '.$imgShuffle['selector']['Folder'],'getImageShuffle',$imgShuffle['selector'],$imgShuffle['setting'],$imgShuffle['wrapperSetting']);
                 $folderHtml.=$this->oc['SourcePot\Datapool\Foundation\Container']->container('PI settings '.$group.'|'.$folder,'generic',$imgShuffle['selector'],array('method'=>'getPiSettingsHtml','classWithNamespace'=>__CLASS__),array('style'=>array('float'=>'left','clear'=>'right','width'=>'fit-content','border'=>'none')));
-                $html.=$folderHtml;
+                $html.=$this->oc['SourcePot\Datapool\Tools\HTMLbuilder']->element(array('tag'=>'article','element-content'=>$folderHtml,'keep-element-content'=>TRUE));
             } // loop through folders
         }
         return $html;
@@ -231,7 +232,7 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
             $selected=(isset($arr['selector']['Content'][$contentKey]))?$arr['selector']['Content'][$contentKey]:'';
             $matrix[$contentKey]['Value']=$this->oc['SourcePot\Datapool\Tools\HTMLbuilder']->select(array('options'=>$options,'selected'=>$selected,'keep-element-content'=>TRUE,'key'=>array('Content',$contentKey),'style'=>array(),'callingClass'=>$arr['callingClass'],'callingFunction'=>$arr['callingFunction']));
         }
-        $arr['html'].=$this->oc['SourcePot\Datapool\Tools\HTMLbuilder']->table(array('matrix'=>$matrix,'hideHeader'=>FALSE,'hideKeys'=>FALSE,'caption'=>'Setting','keep-element-content'=>TRUE));
+        $arr['html'].=$this->oc['SourcePot\Datapool\Tools\HTMLbuilder']->table(array('matrix'=>$matrix,'hideHeader'=>TRUE,'hideKeys'=>FALSE,'caption'=>'Setting','keep-element-content'=>TRUE));
         return $arr;
     }
 }
