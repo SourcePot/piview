@@ -23,6 +23,7 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
 	private $entryTemplate=array();
     
     private $distinctGroupsAndFolders=array();
+    private $piSettings=array();
 
 	public function __construct($oc){
 		$this->oc=$oc;
@@ -64,7 +65,13 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
         $piEntry=$this->oc['SourcePot\Datapool\Tools\MiscTools']->flat2arr($arr,'||');
         $piEntry['Source']=$this->entryTable;
         $piEntry['Expires']=(isset($arr['Expires']))?$arr['Expires']:$this->oc['SourcePot\Datapool\Tools\MiscTools']->getDateTime('now','PT10M');
-        
+        if (isset($piEntry['Content']['timestamp'])){
+            $pageSettings=$this->oc['SourcePot\Datapool\Foundation\Backbone']->getSettings();
+            $piEntryDateTime=new \DateTime('@'.$piEntry['Content']['timestamp']);
+            $serverTimezone=new \DateTimeZone($pageSettings['pageTimeZone']);
+            $piEntryDateTime->setTimezone($serverTimezone);
+            $piEntry['Date']=$piEntryDateTime->format('Y-m-d H:i:s');
+        }
         $fileArr=current($_FILES);
         if ($fileArr){
             // has attached file
@@ -75,7 +82,9 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
             $piEntry=$this->oc['SourcePot\Datapool\Foundation\Database']->unifyEntry($piEntry);
 			$debugArr['entry_updated']=$this->oc['SourcePot\Datapool\Foundation\Database']->updateEntry($piEntry);
         }
-        $answer=$this->oc['SourcePot\Datapool\Tools\MiscTools']->arr2flat($piEntry,'||');
+        // return pi setting
+        $piSetting=$this->getPiSetting($piEntry);
+        $answer=$this->oc['SourcePot\Datapool\Tools\MiscTools']->arr2flat($piSetting,'||');
         if ($isDebugging){
             $debugArr['answer']=$answer;
             $this->oc['SourcePot\Datapool\Tools\MiscTools']->arr2file($debugArr);
@@ -103,20 +112,21 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
         $debugArr=array();
         $html='';
         // get group selector
-        $groupOptions=array(''=>'&larrhk;');
         foreach($this->distinctGroupsAndFolders as $group=>$folderArr){
-            $groupOptions[$group]=$group;
+            $selector=current($folderArr);
+            unset($selector['Folder']);
+            $statusHtml=$this->oc['SourcePot\Datapool\Foundation\Container']->container('PI status '.$group,'generic',$selector,array('method'=>'getPiStatusHtml','classWithNamespace'=>__CLASS__),array('style'=>array('border'=>'none')));
+            $statusHtml.=$this->oc['SourcePot\Datapool\Tools\HTMLbuilder']->element(array('tag'=>'button','element-content'=>'Select '.$selector['Group'],'keep-element-content'=>TRUE,'key'=>array('select',$selector['Group']),'callingClass'=>__CLASS__,'callingFunction'=>__FUNCTION__));
+		    $html.=$this->oc['SourcePot\Datapool\Tools\HTMLbuilder']->element(array('tag'=>'div','element-content'=>$statusHtml,'keep-element-content'=>TRUE,'style'=>array('clear'=>'none','margin'=>'10px')));
         }
         $selector=$this->oc['SourcePot\Datapool\Tools\NetworkTools']->getPageState(__CLASS__);
         $selector['Source']=$this->entryTable;
         $formData=$this->oc['SourcePot\Datapool\Foundation\Element']->formProcessing(__CLASS__,__FUNCTION__);
 		if (isset($formData['cmd']['select'])){
-            $selector=array_merge($selector,$formData['val']);
+            $selector['Group']=key($formData['cmd']['select']);
             $this->oc['SourcePot\Datapool\Tools\NetworkTools']->setPageState(__CLASS__,$selector);
         }
-        $html.=$this->oc['SourcePot\Datapool\Tools\HTMLbuilder']->select(array('label'=>'Group selector','options'=>$groupOptions,'hasSelectBtn'=>TRUE,'key'=>array('Group'),'value'=>$selector['Group'],'keep-element-content'=>TRUE,'callingClass'=>__CLASS__,'callingFunction'=>__FUNCTION__,'class'=>'explorer'));
-		$html.=$this->oc['SourcePot\Datapool\Foundation\Container']->container('All PI status','generic',$selector,array('method'=>'getAllPiStatusHtml','classWithNamespace'=>__CLASS__),array());
-		if ($isDebugging){
+        if ($isDebugging){
             $debugArr['formData']=$formData;
             $debugArr['groupOptions']=$groupOptions;
             $debugArr['selector']=$selector;
@@ -128,63 +138,101 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
     /**
      * Takes the client data, e.g. from a Raspberry Pi ($arr argument) and creates a database entry.
      */
-    private function getSectionsHtml($arr,$isDebugging=FALSE){
-        $html='';
-        $selected=$this->oc['SourcePot\Datapool\Tools\NetworkTools']->getPageState(__CLASS__);
-        if (isset($this->distinctGroupsAndFolders[$selected['Group']])){
-            // Group selected
-            $imgShuffle=array('wrapperSetting'=>array('style'=>array('float'=>'none','padding'=>'10px','border'=>'none','margin'=>'10px auto','border'=>'1px dotted #999;')),
-                              'setting'=>array('hideReloadBtn'=>TRUE,'orderBy'=>'Date','isAsc'=>FALSE,'limit'=>20,'style'=>array('width'=>500,'height'=>400),'autoShuffle'=>FALSE,'getImageShuffle'=>'PIview'),
-                              'selector'=>array(),
-                              );
-            $html.=$this->oc['SourcePot\Datapool\Tools\HTMLbuilder']->element(array('tag'=>'h2','element-content'=>'Client Group'.$selected['Group'],'keep-element-content'=>TRUE));
-            foreach($this->distinctGroupsAndFolders[$selected['Group']] as $folder=>$entrySelector){
-                $html.=$this->oc['SourcePot\Datapool\Tools\HTMLbuilder']->element(array('tag'=>'h3','element-content'=>$folder,'keep-element-content'=>TRUE));
-                $imgShuffle['selector']=$entrySelector;
-                $imgShuffle['selector']['Type']='%piMedia%';
-                $html.=$this->oc['SourcePot\Datapool\Foundation\Container']->container('CCTV '.$imgShuffle['selector']['Folder'],'getImageShuffle',$imgShuffle['selector'],$imgShuffle['setting'],$imgShuffle['wrapperSetting']);
-            } // loop through folders
-        } else {
-            // no valid group selected
-        }
-        return $html;
-    }
-    
-    /**
-     * Takes the client data, e.g. from a Raspberry Pi ($arr argument) and creates a database entry.
-     */
-    public function getAllPiStatusHtml($arr,$isDebugging=FALSE){
+    public function getPiStatusHtml($arr,$isDebugging=FALSE){
         $debugArr=array('arr in'=>$arr);
         $definition=array('Date'=>array('@tag'=>'p','@default'=>'','@excontainer'=>TRUE),
                           'Content'=>array('cpuTemperature'=>array('@tag'=>'p','@default'=>'','@excontainer'=>TRUE),
+                                           'mode'=>array('@tag'=>'p','@default'=>'','@excontainer'=>TRUE),
+                                           'light'=>array('@tag'=>'p','@default'=>'','@excontainer'=>TRUE),
+                                           'alarm'=>array('@tag'=>'p','@default'=>'','@excontainer'=>TRUE),
                                            'activity'=>array('@tag'=>'p','@default'=>'','@excontainer'=>TRUE),
                                           ),
                          );
         $flatDefinition=$this->oc['SourcePot\Datapool\Tools\MiscTools']->arr2flat($definition);
         $arr['html']='';
-        foreach($this->distinctGroupsAndFolders as $group=>$folderArr){
-            $matrix=array();
-            foreach($folderArr as $folder=>$selector){
-                foreach($this->oc['SourcePot\Datapool\Foundation\Database']->entryIterator($selector,FALSE,'Read','Date',FALSE,1,0,array(),TRUE,FALSE) as $piEntry){
-                    $debugArr['most current entries'][]=$piEntry;
-                    $flatPiEntry=$this->oc['SourcePot\Datapool\Tools\MiscTools']->arr2flat($piEntry);
-                    foreach($flatPiEntry as $flatKey=>$value){
-                        $sepPos=intval(strrpos($flatKey,$this->oc['SourcePot\Datapool\Tools\MiscTools']->getSeparator()));
-                        $column=trim(substr($flatKey,$sepPos),'|[]');
-                        $element=$this->oc['SourcePot\Datapool\Foundation\Definitions']->selectorKey2element($piEntry,$flatKey,$value,__CLASS__,__FUNCTION__,TRUE,array('Content'=>$definition));    
-                        if (!empty($element)){
-                            $matrix[$folder][$column]=$element;
-                        }
+        $matrix=array();
+        foreach($this->distinctGroupsAndFolders[$arr['selector']['Group']] as $folder=>$selector){
+            $selector['Type']='%piStatus%';
+            foreach($this->oc['SourcePot\Datapool\Foundation\Database']->entryIterator($selector,FALSE,'Read','Date',FALSE,1,0,array(),TRUE,FALSE) as $piEntry){
+                $debugArr['most current entries'][]=$piEntry;
+                $flatPiEntry=$this->oc['SourcePot\Datapool\Tools\MiscTools']->arr2flat($piEntry);
+                foreach($flatPiEntry as $flatKey=>$value){
+                    $sepPos=intval(strrpos($flatKey,$this->oc['SourcePot\Datapool\Tools\MiscTools']->getSeparator()));
+                    $column=trim(substr($flatKey,$sepPos),'|[]');
+                    $element=$this->oc['SourcePot\Datapool\Foundation\Definitions']->selectorKey2element($piEntry,$flatKey,$value,__CLASS__,__FUNCTION__,TRUE,array('Content'=>$definition));    
+                    if (!empty($element)){
+                        $matrix[$folder][$column]=$element;
                     }
-                } // loop through folder
-                $arr['html'].=$this->oc['SourcePot\Datapool\Tools\HTMLbuilder']->table(array('matrix'=>$matrix,'hideHeader'=>FALSE,'hideKeys'=>FALSE,'caption'=>$group,'keep-element-content'=>TRUE));
-            } // loop through groups
-        }
+                }
+            }
+            $arr['html'].=$this->oc['SourcePot\Datapool\Tools\HTMLbuilder']->table(array('matrix'=>$matrix,'hideHeader'=>FALSE,'hideKeys'=>FALSE,'caption'=>$arr['selector']['Group'],'keep-element-content'=>TRUE));
+        } // loop through folder
         if ($isDebugging){
             $debugArr['distinctGroupsAndFolders']=$this->distinctGroupsAndFolders;
             $this->oc['SourcePot\Datapool\Tools\MiscTools']->arr2file($debugArr);
         }
         return $arr;
     }    
+   
+    /**
+     * Takes the client data, e.g. from a Raspberry Pi ($arr argument) and creates a database entry.
+     */
+    private function getSectionsHtml($arr,$isDebugging=FALSE){
+        $html='';
+        $selected=$this->oc['SourcePot\Datapool\Tools\NetworkTools']->getPageState(__CLASS__);
+        if (empty($selected['Group'])){
+            // no valid group selected
+        } else {
+            // Group selected
+            $imgShuffle=array('wrapperSetting'=>array('style'=>array('clear'=>'left','padding'=>'10px','border'=>'none','margin'=>'10px auto','border'=>'1px dotted #999;','width'=>'fit-content')),
+                              'setting'=>array('hideReloadBtn'=>TRUE,'orderBy'=>'Date','isAsc'=>FALSE,'limit'=>20,'style'=>array('width'=>500,'height'=>285),'autoShuffle'=>FALSE,'getImageShuffle'=>'PIview'),
+                              'selector'=>array(),
+                              );
+            $html.=$this->oc['SourcePot\Datapool\Tools\HTMLbuilder']->element(array('tag'=>'h2','element-content'=>'Client Group '.$selected['Group'],'keep-element-content'=>TRUE,'style'=>array('float'=>'left','clear'=>'left')));
+            foreach($this->distinctGroupsAndFolders[$selected['Group']] as $folder=>$entrySelector){
+                $folderHtml=$this->oc['SourcePot\Datapool\Tools\HTMLbuilder']->element(array('tag'=>'h3','element-content'=>$folder,'keep-element-content'=>TRUE,'style'=>array('float'=>'left','clear'=>'both')));
+                $imgShuffle['selector']=$entrySelector;
+                $imgShuffle['selector']['Type']='%piMedia%';
+                $folderHtml.=$this->oc['SourcePot\Datapool\Foundation\Container']->container('CCTV '.$imgShuffle['selector']['Folder'],'getImageShuffle',$imgShuffle['selector'],$imgShuffle['setting'],$imgShuffle['wrapperSetting']);
+                $folderHtml.=$this->oc['SourcePot\Datapool\Foundation\Container']->container('PI settings '.$group.'|'.$folder,'generic',$imgShuffle['selector'],array('method'=>'getPiSettingsHtml','classWithNamespace'=>__CLASS__),array('style'=>array('float'=>'left','clear'=>'right','width'=>'fit-content','border'=>'none')));
+                $html.=$folderHtml;
+            } // loop through folders
+        }
+        return $html;
+    }
+    
+    private function getPiSettingSelector($selector){
+        $template=array('Source'=>$this->entryTable,'Type'=>'piSetting','Name'=>'Pi entry');
+        return array_merge($selector,$template);
+    }
+    
+    private function getPiSetting($selector){
+        $piEntry=$this->getPiSettingSelector($selector);
+        $piEntry=$this->oc['SourcePot\Datapool\Tools\MiscTools']->addEntryId($piEntry,array('Group','Folder','Name','Type'),0);
+		$piEntry['Content']=array('mode'=>'capturing','captureTime'=>3600,'light'=>0,'alarm'=>0);
+        return $this->oc['SourcePot\Datapool\Foundation\Database']->entryByIdCreateIfMissing($piEntry,TRUE);
+    }
+    
+    public function getPiSettingsHtml($arr){
+        $arr['html']='';
+        $optionsArr=array('mode'=>array('idle'=>'Idle','capturing'=>'Capturing','sms'=>'SMS','alarm'=>'Alarm'),
+                          'captureTime'=>array('20'=>'every 20 sec','600'=>'every 10 min','3600'=>'every 1 hour','28800'=>'every 8 hours'),
+                          'light'=>array('0'=>'Off','1'=>'On'),
+                          'alarm'=>array('0'=>'Off','1'=>'On'),
+                          );
+        $arr['selector']=$this->getPiSetting($arr['selector']);
+        $formData=$this->oc['SourcePot\Datapool\Foundation\Element']->formProcessing($arr['callingClass'],$arr['callingFunction']);
+		if (!empty($formData['val'])){
+            $arr['selector']=array_replace_recursive($arr['selector'],$formData['val']);
+            $arr['selector']=$this->oc['SourcePot\Datapool\Foundation\Database']->updateEntry($arr['selector']);
+        }
+        $matrix=array();
+        foreach($optionsArr as $contentKey=>$options){
+            $selected=(isset($arr['selector']['Content'][$contentKey]))?$arr['selector']['Content'][$contentKey]:'';
+            $matrix[$contentKey]['Value']=$this->oc['SourcePot\Datapool\Tools\HTMLbuilder']->select(array('options'=>$options,'selected'=>$selected,'keep-element-content'=>TRUE,'key'=>array('Content',$contentKey),'style'=>array(),'callingClass'=>$arr['callingClass'],'callingFunction'=>$arr['callingFunction']));
+        }
+        $arr['html'].=$this->oc['SourcePot\Datapool\Tools\HTMLbuilder']->table(array('matrix'=>$matrix,'hideHeader'=>FALSE,'hideKeys'=>FALSE,'caption'=>'Setting','keep-element-content'=>TRUE));
+        return $arr;
+    }
 }
 ?>
