@@ -49,7 +49,7 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
 		if ($arr===TRUE){
 			return array('Category'=>'Apps','Emoji'=>'&Pi;','Label'=>'PI view','Read'=>'ALL_MEMBER_R','Class'=>__CLASS__);
 		} else {
-            $html=$this->groupSelectorHtml($arr);
+            $html=$this->groupSelectorAndStatusHtml($arr);
             $html.=$this->getSectionsHtml($arr);
 			$arr['toReplace']['{{content}}']=$html;
 			return $arr;
@@ -57,7 +57,7 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
 	}
     
     /**
-     * Takes the client data, e.g. from a Raspberry Pi ($arr argument) and creates a database entry.
+     * Takes the client data, e.g. from a Raspberry Pi ($arr argument) and creates a database entry
      */
     public function piRequest($arr,$isDebugging=FALSE){
         $answer=array();
@@ -92,6 +92,9 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
         return $answer;
     }
     
+    /**
+     * Load client structure, Groups and Folders into class property distinctGroupsAndFolders
+     */
     private function getDistinctGroupsAndFolders(){
         $this->distinctGroupsAndFolders=array();
         $selector=array('Source'=>$this->entryTable,'Type'=>'%piStatus%');
@@ -106,9 +109,9 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
     }
     
     /**
-     * Takes the client data, e.g. from a Raspberry Pi ($arr argument) and creates a database entry.
+     * Status overview re all clients and Group selection
      */
-    private function groupSelectorHtml($arr,$isDebugging=FALSE){
+    private function groupSelectorAndStatusHtml($arr,$isDebugging=FALSE){
         $debugArr=array();
         $html='';
         // get group selector
@@ -137,7 +140,7 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
     }
     
     /**
-     * Takes the client data, e.g. from a Raspberry Pi ($arr argument) and creates a database entry.
+     * Pi status container plugin
      */
     public function getPiStatusHtml($arr,$isDebugging=FALSE){
         $debugArr=array('arr in'=>$arr);
@@ -176,7 +179,7 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
     }    
    
     /**
-     * Takes the client data, e.g. from a Raspberry Pi ($arr argument) and creates a database entry.
+     * PI client control and view
      */
     private function getSectionsHtml($arr,$isDebugging=FALSE){
         $html='';
@@ -202,6 +205,9 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
         return $html;
     }
     
+    /**
+     * PI settings
+     */
     private function getPiSettingSelector($selector){
         $template=array('Source'=>$this->entryTable,'Type'=>'piSetting','Name'=>'Pi entry');
         return array_merge($selector,$template);
@@ -214,6 +220,9 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
         return $this->oc['SourcePot\Datapool\Foundation\Database']->entryByIdCreateIfMissing($piEntry,TRUE);
     }
     
+    /**
+     * PI settings container plugin
+     */
     public function getPiSettingsHtml($arr){
         $arr['html']='';
         $optionsArr=array('mode'=>array('idle'=>'Idle','capturing'=>'Capturing','sms'=>'SMS','alarm'=>'Alarm'),
