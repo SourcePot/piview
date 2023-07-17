@@ -229,6 +229,7 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
                           'captureTime'=>array('20'=>'every 20 sec','600'=>'every 10 min','3600'=>'every 1 hour','28800'=>'every 8 hours'),
                           'light'=>array('0'=>'Off','1'=>'On'),
                           'alarm'=>array('0'=>'Off','1'=>'On'),
+                          'activityThreshold'=>array('5'=>'>4','10'=>'>9','20'=>'>19'),
                           );
         $arr['selector']=$this->getPiSetting($arr['selector']);
         $formData=$this->oc['SourcePot\Datapool\Foundation\Element']->formProcessing($arr['callingClass'],$arr['callingFunction']);
@@ -241,6 +242,7 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
             $selected=(isset($arr['selector']['Content'][$contentKey]))?$arr['selector']['Content'][$contentKey]:'';
             $matrix[$contentKey]['Value']=$this->oc['SourcePot\Datapool\Tools\HTMLbuilder']->select(array('options'=>$options,'selected'=>$selected,'keep-element-content'=>TRUE,'key'=>array('Content',$contentKey),'style'=>array(),'callingClass'=>$arr['callingClass'],'callingFunction'=>$arr['callingFunction']));
         }
+        $matrix['Mobile (SMS)']['Value']=$this->oc['SourcePot\Datapool\Tools\HTMLbuilder']->element(array('tag'=>'input','type'=>'text','key'=>array('Content','mobile'),'style'=>array(),'callingClass'=>$arr['callingClass'],'callingFunction'=>$arr['callingFunction']));
         $arr['html'].=$this->oc['SourcePot\Datapool\Tools\HTMLbuilder']->table(array('matrix'=>$matrix,'hideHeader'=>TRUE,'hideKeys'=>FALSE,'caption'=>'Setting','keep-element-content'=>TRUE));
         return $arr;
     }
