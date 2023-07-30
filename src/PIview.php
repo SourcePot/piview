@@ -24,6 +24,8 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
     
     private $distinctGroupsAndFolders=array();
     private $piSettings=array();
+    
+    private $pageSettings=array();
 
 	public function __construct($oc){
 		$this->oc=$oc;
@@ -33,6 +35,7 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
 
 	public function init(array $oc){
 		$this->oc=$oc;
+        $this->pageSettings=$this->oc['SourcePot\Datapool\Foundation\Backbone']->getSettings();
 		$this->entryTemplate=$oc['SourcePot\Datapool\Foundation\Database']->getEntryTemplateCreateTable($this->entryTable,$this->entryTemplate);
         $this->getDistinctGroupsAndFolders();
 	}
@@ -51,7 +54,7 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
 		} else {
             $html=$this->groupSelectorAndStatusHtml($arr);
             $html.=$this->getSectionsHtml($arr);
-			$arr['toReplace']['{{content}}']=$html;
+            $arr['toReplace']['{{content}}']=$html;
 			return $arr;
 		}
 	}
@@ -198,12 +201,52 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
                 $imgShuffle['selector']=$entrySelector;
                 $imgShuffle['selector']['Type']='%piMedia%';
                 $folderHtml.=$this->oc['SourcePot\Datapool\Foundation\Container']->container('CCTV '.$imgShuffle['selector']['Folder'],'getImageShuffle',$imgShuffle['selector'],$imgShuffle['setting'],$imgShuffle['wrapperSetting']);
-                $folderHtml.=$this->oc['SourcePot\Datapool\Foundation\Container']->container('PI settings '.$group.'|'.$folder,'generic',$imgShuffle['selector'],array('method'=>'getPiSettingsHtml','classWithNamespace'=>__CLASS__),array('style'=>array('float'=>'left','clear'=>'right','width'=>'fit-content','border'=>'none')));
+                $folderHtml.=$this->oc['SourcePot\Datapool\Foundation\Container']->container('PI settings '.$group.'|'.$folder,'generic',$imgShuffle['selector'],array('method'=>'getPiSettingsHtml','classWithNamespace'=>__CLASS__),array('style'=>array('float'=>'left','clear'=>'right','width'=>'fit-content','border'=>'none','margin'=>'0')));
                 $html.=$this->oc['SourcePot\Datapool\Tools\HTMLbuilder']->element(array('tag'=>'article','element-content'=>$folderHtml,'keep-element-content'=>TRUE));
             } // loop through folders
         }
         return $html;
     }
+    
+    private function getActivityChartHtml($arr){
+        $selector=$selected=$this->oc['SourcePot\Datapool\Tools\NetworkTools']->getPageState(__CLASS__);
+        $html=$this->oc['SourcePot\Datapool\Foundation\Container']->container('PI activity','generic',$selector,array('classWithNamespace'=>__CLASS__,'method'=>'piActivityChart'),array());	
+		$html=$this->oc['SourcePot\Datapool\Tools\HTMLbuilder']->element(array('tag'=>'article','element-content'=>$html,'keep-element-content'=>TRUE));    
+        return $html;
+    }
+    
+    public function piActivityChart($arr){
+        $arr['html']='';
+        $traces=array();
+        foreach($this->oc['SourcePot\Datapool\Foundation\Database']->entryIterator($arr['selector'],FALSE,'Read','Date',TRUE) as $piEntry){
+            
+            $timeZone=new \DateTimeZone($this->pageSettings['pageTimeZone']);
+            $dateTime=new \DateTime($piEntry['Date'],$timeZone);
+		
+            $traces[$piEntry['Group']]['id']=$piEntry['Folder'];
+            $traces[$piEntry['Group']]['name']=$piEntry['Folder'];
+            $traces[$piEntry['Group']]['label']=array();
+            $traces[$piEntry['Group']]['x']['scale']['tickCount']=1;
+            $traces[$piEntry['Group']]['x']['dataType']='dateTime';
+            $traces[$piEntry['Group']]['x']['data'][]=$dateTime->getTimestamp();
+            $traces[$piEntry['Group']]['x']['timeStampMin']=time()-3600;
+            $traces[$piEntry['Group']]['x']['timeStampMax']=time();
+            $traces[$piEntry['Group']]['y']['scale']['tickCount']=3;
+            $traces[$piEntry['Group']]['y']['dataType']='float';
+            $traces[$piEntry['Group']]['y']['data'][]=intval($piEntry['Content']['activity']);
+        	$traces[$piEntry['Group']]['label'][]=intval($piEntry['Content']['activity']);
+        }
+        $arr['chart']=array('width'=>400,'height'=>200,'gaps'=>array(10,20,20,20));
+        foreach($traces as $name=>$trace){
+            $trace['stroke']='rgb(100,0,0)';
+            $trace['show']=TRUE;
+            $trace['bar']['show']=TRUE;
+            $trace['point']['show']=TRUE;
+		    $arr=$this->oc['SourcePot\Datapool\Foundation\LinearChart']->addTrace($arr,$trace);
+        }
+        $arr['html']=$this->oc['SourcePot\Datapool\Foundation\LinearChart']->chartSvg($arr);
+        return $arr;
+	}
     
     /**
      * PI settings
@@ -230,6 +273,8 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
                           'light'=>array('0'=>'Off','1'=>'On'),
                           'alarm'=>array('0'=>'Off','1'=>'On'),
                           'activityThreshold'=>array('5'=>'>4','10'=>'>9','20'=>'>19'),
+                          'Recipient mode'=>array('Email'=>'Email','Mobile'=>'SMS'),
+                          'Recipient'=>array(),
                           );
         $arr['selector']=$this->getPiSetting($arr['selector']);
         $formData=$this->oc['SourcePot\Datapool\Foundation\Element']->formProcessing($arr['callingClass'],$arr['callingFunction']);
@@ -238,12 +283,14 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
             $arr['selector']=$this->oc['SourcePot\Datapool\Foundation\Database']->updateEntry($arr['selector']);
         }
         $matrix=array();
+        $recipientMode=(isset($arr['selector']['Content']['Recipient mode']))?$arr['selector']['Content']['Recipient mode']:'Mobile';
+        $optionsArr['Recipient']=$this->oc['SourcePot\Datapool\Foundation\User']->getUserOptions(array(),$recipientMode);
         foreach($optionsArr as $contentKey=>$options){
             $selected=(isset($arr['selector']['Content'][$contentKey]))?$arr['selector']['Content'][$contentKey]:'';
             $matrix[$contentKey]['Value']=$this->oc['SourcePot\Datapool\Tools\HTMLbuilder']->select(array('options'=>$options,'selected'=>$selected,'keep-element-content'=>TRUE,'key'=>array('Content',$contentKey),'style'=>array(),'callingClass'=>$arr['callingClass'],'callingFunction'=>$arr['callingFunction']));
         }
-        $matrix['Mobile (SMS)']['Value']=$this->oc['SourcePot\Datapool\Tools\HTMLbuilder']->element(array('tag'=>'input','type'=>'text','key'=>array('Content','mobile'),'style'=>array(),'callingClass'=>$arr['callingClass'],'callingFunction'=>$arr['callingFunction']));
-        $arr['html'].=$this->oc['SourcePot\Datapool\Tools\HTMLbuilder']->table(array('matrix'=>$matrix,'hideHeader'=>TRUE,'hideKeys'=>FALSE,'caption'=>'Setting','keep-element-content'=>TRUE));
+        $matrix['Activity']['Value']=$this->getActivityChartHtml($arr);
+        $arr['html'].=$this->oc['SourcePot\Datapool\Tools\HTMLbuilder']->table(array('matrix'=>$matrix,'hideHeader'=>TRUE,'hideKeys'=>FALSE,'caption'=>$arr['selector']['Folder'],'keep-element-content'=>TRUE));
         return $arr;
     }
 }
