@@ -69,9 +69,8 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
         $piEntry['Source']=$this->entryTable;
         $piEntry['Expires']=(isset($arr['Expires']))?$arr['Expires']:$this->oc['SourcePot\Datapool\Tools\MiscTools']->getDateTime('now','P10D');
         if (isset($piEntry['Content']['timestamp'])){
-            $pageSettings=$this->oc['SourcePot\Datapool\Foundation\Backbone']->getSettings();
             $piEntryDateTime=new \DateTime('@'.$piEntry['Content']['timestamp']);
-            $serverTimezone=new \DateTimeZone($pageSettings['pageTimeZone']);
+            $serverTimezone=new \DateTimeZone($this->pageSettings['pageTimeZone']);
             $piEntryDateTime->setTimezone($serverTimezone);
             $piEntry['Date']=$piEntryDateTime->format('Y-m-d H:i:s');
         }
