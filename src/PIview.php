@@ -54,6 +54,8 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
 		} else {
             $html=$this->groupSelectorAndStatusHtml($arr);
             $html.=$this->getSectionsHtml($arr);
+            $selector=$this->oc['SourcePot\Datapool\Tools\NetworkTools']->getPageState(__CLASS__);
+            $html.=$this->oc['SourcePot\Datapool\Foundation\Container']->container('PI view events','generic',$selector,array('classWithNamespace'=>'SourcePot\Datapool\Foundation\Container','method'=>'getEventChart'),array());    
             $arr['toReplace']['{{content}}']=$html;
 			return $arr;
 		}
@@ -207,46 +209,6 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
         return $html;
     }
     
-    private function getActivityChartHtml($arr){
-        $selector=$selected=$this->oc['SourcePot\Datapool\Tools\NetworkTools']->getPageState(__CLASS__);
-        $html=$this->oc['SourcePot\Datapool\Foundation\Container']->container('PI activity','generic',$selector,array('classWithNamespace'=>__CLASS__,'method'=>'piActivityChart'),array());	
-		$html=$this->oc['SourcePot\Datapool\Tools\HTMLbuilder']->element(array('tag'=>'article','element-content'=>$html,'keep-element-content'=>TRUE));    
-        return $html;
-    }
-    
-    public function piActivityChart($arr){
-        $arr['html']='';
-        $traces=array();
-        foreach($this->oc['SourcePot\Datapool\Foundation\Database']->entryIterator($arr['selector'],FALSE,'Read','Date',TRUE) as $piEntry){
-            
-            $timeZone=new \DateTimeZone($this->pageSettings['pageTimeZone']);
-            $dateTime=new \DateTime($piEntry['Date'],$timeZone);
-		
-            $traces[$piEntry['Group']]['id']=$piEntry['Folder'];
-            $traces[$piEntry['Group']]['name']=$piEntry['Folder'];
-            $traces[$piEntry['Group']]['label']=array();
-            $traces[$piEntry['Group']]['x']['scale']['tickCount']=1;
-            $traces[$piEntry['Group']]['x']['dataType']='dateTime';
-            $traces[$piEntry['Group']]['x']['data'][]=$dateTime->getTimestamp();
-            $traces[$piEntry['Group']]['x']['timeStampMin']=time()-3600;
-            $traces[$piEntry['Group']]['x']['timeStampMax']=time();
-            $traces[$piEntry['Group']]['y']['scale']['tickCount']=3;
-            $traces[$piEntry['Group']]['y']['dataType']='float';
-            $traces[$piEntry['Group']]['y']['data'][]=intval($piEntry['Content']['activity']);
-        	$traces[$piEntry['Group']]['label'][]=intval($piEntry['Content']['activity']);
-        }
-        $arr['chart']=array('width'=>400,'height'=>200,'gaps'=>array(10,20,20,20));
-        foreach($traces as $name=>$trace){
-            $trace['stroke']='rgb(100,0,0)';
-            $trace['show']=TRUE;
-            $trace['bar']['show']=TRUE;
-            $trace['point']['show']=TRUE;
-		    $arr=$this->oc['SourcePot\Datapool\Foundation\LinearChart']->addTrace($arr,$trace);
-        }
-        $arr['html']=$this->oc['SourcePot\Datapool\Foundation\LinearChart']->chartSvg($arr);
-        return $arr;
-	}
-    
     /**
      * PI settings
      */
@@ -288,7 +250,6 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
             $selected=(isset($arr['selector']['Content'][$contentKey]))?$arr['selector']['Content'][$contentKey]:'';
             $matrix[$contentKey]['Value']=$this->oc['SourcePot\Datapool\Tools\HTMLbuilder']->select(array('options'=>$options,'selected'=>$selected,'keep-element-content'=>TRUE,'key'=>array('Content',$contentKey),'style'=>array(),'callingClass'=>$arr['callingClass'],'callingFunction'=>$arr['callingFunction']));
         }
-        $matrix['Activity']['Value']=$this->getActivityChartHtml($arr);
         $arr['html'].=$this->oc['SourcePot\Datapool\Tools\HTMLbuilder']->table(array('matrix'=>$matrix,'hideHeader'=>TRUE,'hideKeys'=>FALSE,'caption'=>$arr['selector']['Folder'],'keep-element-content'=>TRUE));
         return $arr;
     }
