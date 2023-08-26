@@ -107,9 +107,9 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
     }
     
     private function sendMessage($piEntry,$piSetting){
-        if (strcmp($piEntry['Content']['mode'],'sms')===0 || strcmp($piEntry['Content']['mode'],'alarm')===0){
+        if (strcmp($piEntry['Content']['mode'],'message')===0 || strcmp($piEntry['Content']['mode'],'alarm')===0){
             if ($piEntry['Content']['activity']>=$piSetting['Content']['activityThreshold']){
-                // create SMS entry
+                // create message entry
                 $transmissionEntry=$piEntry;
                 $transmissionEntry['Name']='PIview';
                 $transmissionEntry['Type']='transmission';
@@ -121,7 +121,7 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
                 if (isset($piEntry['Content']['activity'])){$transmissionEntry['Content']['activity']='activity='.$piEntry['Content']['activity'];}
                 if (isset($piEntry['Content']['mode'])){$transmissionEntry['Content']['mode']='mode='.$piEntry['Content']['mode'];}
                 if (isset($piEntry['Content']['cpuTemperature'])){$transmissionEntry['Content']['cpuTemp']='cpuTemp='.$piEntry['Content']['cpuTemperature'].' C';}
-                // send sms if new
+                // send message if new
                 if (empty($lastTransmissionEntry['Date'])){
                     $lastTransmissionEntry['Date']=$this->oc['SourcePot\Datapool\Tools\MiscTools']->getDateTime('yesterday');
                 }
@@ -132,15 +132,15 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
                         if ($sentEntriesCount){
                             $this->oc['SourcePot\Datapool\Foundation\Database']->updateEntry($transmissionEntry,TRUE);
                             $this->oc['SourcePot\Datapool\Foundation\Logging']->addLog(array('msg'=>'Message sent','priority'=>12,'callingClass'=>__CLASS__,'callingFunction'=>__FUNCTION__));
-                        } // if sms was sent
+                        } // if message was sent
                     } else {
                         $this->oc['SourcePot\Datapool\Foundation\Logging']->addLog(array('msg'=>'Failed to send message: transmitter not valid','priority'=>14,'callingClass'=>__CLASS__,'callingFunction'=>__FUNCTION__));
                     } // if valid transmitter
                 } else {
                     $this->oc['SourcePot\Datapool\Foundation\Logging']->addLog(array('msg'=>'Failed to send message: message sent already '.$age.'sec ago','priority'=>11,'callingClass'=>__CLASS__,'callingFunction'=>__FUNCTION__));
-                } // if new sms
+                } // if new message
             } // if activity greater activity threshold
-        } // if sms or alarm mode
+        } // if message or alarm mode
     }
     
     /**
@@ -277,7 +277,7 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
      */
     public function getPiSettingsHtml($arr){
         $arr['html']='';
-        $optionsArr=array('mode'=>array('idle'=>'Idle','capturing'=>'Capturing','sms'=>'SMS','alarm'=>'Alarm'),
+        $optionsArr=array('mode'=>array('idle'=>'Idle','capturing'=>'Capturing','message'=>'Message','alarm'=>'Alarm'),
                           'captureTime'=>array('20'=>'every 20 sec','600'=>'every 10 min','3600'=>'every 1 hour','28800'=>'every 8 hours'),
                           'light'=>array('0'=>'Off','1'=>'On'),
                           'alarm'=>array('0'=>'Off','1'=>'On'),
