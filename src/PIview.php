@@ -54,12 +54,20 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
 		} else {
             $html=$this->groupSelectorAndStatusHtml($arr);
             $html.=$this->getSectionsHtml($arr);
-            $selector=$this->oc['SourcePot\Datapool\Tools\NetworkTools']->getPageState(__CLASS__);
-            $html.=$this->oc['SourcePot\Datapool\Foundation\Container']->container('PI view events','generic',$selector,array('classWithNamespace'=>'SourcePot\Datapool\Foundation\Container','method'=>'getEventChart'),array());    
+            $html.=$this->getPiEventsChart();
             $arr['toReplace']['{{content}}']=$html;
 			return $arr;
 		}
 	}
+    
+    private function getPiEventsChart(){
+        $selector=$this->oc['SourcePot\Datapool\Tools\NetworkTools']->getPageState(__CLASS__);
+        $settings=array('classWithNamespace'=>'SourcePot\Datapool\Foundation\Container','method'=>'getEventChart','width'=>600);
+        // compile html
+        $html='';
+        $html.=$this->oc['SourcePot\Datapool\Foundation\Container']->container('PI view events','generic',$selector,$settings,array());    
+        return $html;    
+    }
     
     /**
      * Takes the client data, e.g. from a Raspberry Pi ($arr argument) and creates a database entry
@@ -69,7 +77,6 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
         $debugArr=array('arr'=>$arr,'_FILES'=>$_FILES);
         $piEntry=$this->oc['SourcePot\Datapool\Tools\MiscTools']->flat2arr($arr,'||');
         $piEntry['Source']=$this->entryTable;
-        $piEntry['Expires']=(isset($arr['Expires']))?$arr['Expires']:$this->oc['SourcePot\Datapool\Tools\MiscTools']->getDateTime('now','P10D');
         if (isset($piEntry['Content']['timestamp'])){
             $piEntryDateTime=new \DateTime('@'.$piEntry['Content']['timestamp']);
             $serverTimezone=new \DateTimeZone($this->pageSettings['pageTimeZone']);
@@ -79,21 +86,61 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
         $fileArr=current($_FILES);
         if ($fileArr){
             // has attached file
+            $piEntry['Expires']=(isset($arr['Expires']))?$arr['Expires']:$this->oc['SourcePot\Datapool\Tools\MiscTools']->getDateTime('now','P10D');
             $debugArr['fileArr']=$fileArr;
             $debugArr['entry_updated']=$this->oc['SourcePot\Datapool\Foundation\Filespace']->file2entries($fileArr,$piEntry);
         } else {
             // no attached file
+            $piEntry['Expires']=(isset($arr['Expires']))?$arr['Expires']:$this->oc['SourcePot\Datapool\Tools\MiscTools']->getDateTime('now','P1D');
             $piEntry=$this->oc['SourcePot\Datapool\Foundation\Database']->unifyEntry($piEntry);
 			$debugArr['entry_updated']=$this->oc['SourcePot\Datapool\Foundation\Database']->updateEntry($piEntry);
         }
         // return pi setting
         $piSetting=$this->getPiSetting($piEntry);
+        $this->sendMessage($piEntry,$piSetting);
         $answer=$this->oc['SourcePot\Datapool\Tools\MiscTools']->arr2flat($piSetting,'||');
         if ($isDebugging){
             $debugArr['answer']=$answer;
             $this->oc['SourcePot\Datapool\Tools\MiscTools']->arr2file($debugArr);
         }
         return $answer;
+    }
+    
+    private function sendMessage($piEntry,$piSetting){
+        if (strcmp($piEntry['Content']['mode'],'sms')===0 || strcmp($piEntry['Content']['mode'],'alarm')===0){
+            if ($piEntry['Content']['activity']>=$piSetting['Content']['activityThreshold']){
+                // create SMS entry
+                $transmissionEntry=$piEntry;
+                $transmissionEntry['Name']='PIview';
+                $transmissionEntry['Type']='transmission';
+                $transmissionEntry=$this->oc['SourcePot\Datapool\Tools\MiscTools']->addEntryId($transmissionEntry,array('Source','Group','Folder','Type'),'0','',FALSE);
+                $lastTransmissionEntry=$this->oc['SourcePot\Datapool\Foundation\Database']->entryById($transmissionEntry,TRUE);
+                $transmissionEntry['Expires']=$this->oc['SourcePot\Datapool\Tools\MiscTools']->getDateTime('tomorrow');
+                $transmissionEntry['Date']=$this->oc['SourcePot\Datapool\Tools\MiscTools']->getDateTime('now');
+                $transmissionEntry['Content']=array('Group'=>$piEntry['Group'],'Folder'=>$piEntry['Folder']);
+                if (isset($piEntry['Content']['activity'])){$transmissionEntry['Content']['activity']='activity='.$piEntry['Content']['activity'];}
+                if (isset($piEntry['Content']['mode'])){$transmissionEntry['Content']['mode']='mode='.$piEntry['Content']['mode'];}
+                if (isset($piEntry['Content']['cpuTemperature'])){$transmissionEntry['Content']['cpuTemp']='cpuTemp='.$piEntry['Content']['cpuTemperature'].' C';}
+                // send sms if new
+                if (empty($lastTransmissionEntry['Date'])){
+                    $lastTransmissionEntry['Date']=$this->oc['SourcePot\Datapool\Tools\MiscTools']->getDateTime('yesterday');
+                }
+                $age=strtotime($transmissionEntry['Date'])-strtotime($lastTransmissionEntry['Date']);
+                if ($age>120){
+                    if (isset($this->oc[$piSetting['Content']['Transmitter']])){
+                        $sentEntriesCount=$this->oc[$piSetting['Content']['Transmitter']]->send($piSetting['Content']['Recipient'],$transmissionEntry);
+                        if ($sentEntriesCount){
+                            $this->oc['SourcePot\Datapool\Foundation\Database']->updateEntry($transmissionEntry,TRUE);
+                            $this->oc['SourcePot\Datapool\Foundation\Logging']->addLog(array('msg'=>'Message sent','priority'=>12,'callingClass'=>__CLASS__,'callingFunction'=>__FUNCTION__));
+                        } // if sms was sent
+                    } else {
+                        $this->oc['SourcePot\Datapool\Foundation\Logging']->addLog(array('msg'=>'Failed to send message: transmitter not valid','priority'=>14,'callingClass'=>__CLASS__,'callingFunction'=>__FUNCTION__));
+                    } // if valid transmitter
+                } else {
+                    $this->oc['SourcePot\Datapool\Foundation\Logging']->addLog(array('msg'=>'Failed to send message: message sent already '.$age.'sec ago','priority'=>11,'callingClass'=>__CLASS__,'callingFunction'=>__FUNCTION__));
+                } // if new sms
+            } // if activity greater activity threshold
+        } // if sms or alarm mode
     }
     
     /**
@@ -202,7 +249,7 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
                 $imgShuffle['selector']=$entrySelector;
                 $imgShuffle['selector']['Type']='%piMedia%';
                 $folderHtml.=$this->oc['SourcePot\Datapool\Foundation\Container']->container('CCTV '.$imgShuffle['selector']['Folder'],'getImageShuffle',$imgShuffle['selector'],$imgShuffle['setting'],$imgShuffle['wrapperSetting']);
-                $folderHtml.=$this->oc['SourcePot\Datapool\Foundation\Container']->container('PI settings '.$group.'|'.$folder,'generic',$imgShuffle['selector'],array('method'=>'getPiSettingsHtml','classWithNamespace'=>__CLASS__),array('style'=>array('float'=>'left','clear'=>'right','width'=>'fit-content','border'=>'none','margin'=>'0')));
+                $folderHtml.=$this->oc['SourcePot\Datapool\Foundation\Container']->container('PI settings '.$selected['Group'].'|'.$folder,'generic',$imgShuffle['selector'],array('method'=>'getPiSettingsHtml','classWithNamespace'=>__CLASS__),array('style'=>array('float'=>'left','clear'=>'right','width'=>'fit-content','border'=>'none','margin'=>'0')));
                 $html.=$this->oc['SourcePot\Datapool\Tools\HTMLbuilder']->element(array('tag'=>'article','element-content'=>$folderHtml,'keep-element-content'=>TRUE));
             } // loop through folders
         }
@@ -221,6 +268,7 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
         $piEntry=$this->getPiSettingSelector($selector);
         $piEntry=$this->oc['SourcePot\Datapool\Tools\MiscTools']->addEntryId($piEntry,array('Group','Folder','Name','Type'),0);
 		$piEntry['Content']=array('mode'=>'capturing','captureTime'=>3600,'light'=>0,'alarm'=>0);
+        $piEntry['Expires']='2999-01-01 01:00:00';
         return $this->oc['SourcePot\Datapool\Foundation\Database']->entryByIdCreateIfMissing($piEntry,TRUE);
     }
     
@@ -233,8 +281,8 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
                           'captureTime'=>array('20'=>'every 20 sec','600'=>'every 10 min','3600'=>'every 1 hour','28800'=>'every 8 hours'),
                           'light'=>array('0'=>'Off','1'=>'On'),
                           'alarm'=>array('0'=>'Off','1'=>'On'),
-                          'activityThreshold'=>array('5'=>'>4','10'=>'>9','20'=>'>19'),
-                          'Recipient mode'=>array('Email'=>'Email','Mobile'=>'SMS'),
+                          'activityThreshold'=>array('3'=>'>2','5'=>'>4','10'=>'>9','20'=>'>19'),
+                          'Transmitter'=>array(),
                           'Recipient'=>array(),
                           );
         $arr['selector']=$this->getPiSetting($arr['selector']);
@@ -243,9 +291,11 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
             $arr['selector']=array_replace_recursive($arr['selector'],$formData['val']);
             $arr['selector']=$this->oc['SourcePot\Datapool\Foundation\Database']->updateEntry($arr['selector']);
         }
+        $optionsArr['Transmitter']=$this->oc['SourcePot\Datapool\Root']->getImplementedInterfaces('SourcePot\Datapool\Interfaces\Transmitter');
+        $transmitter=(isset($arr['selector']['Content']['Transmitter']))?$arr['selector']['Content']['Transmitter']:key($optionsArr['Transmitter']);
+        $relevantFlatUserContentKey=$this->oc[$transmitter]->getRelevantFlatUserContentKey();
+        $optionsArr['Recipient']=$this->oc['SourcePot\Datapool\Foundation\User']->getUserOptions(array(),$relevantFlatUserContentKey);
         $matrix=array();
-        $recipientMode=(isset($arr['selector']['Content']['Recipient mode']))?$arr['selector']['Content']['Recipient mode']:'Mobile';
-        $optionsArr['Recipient']=$this->oc['SourcePot\Datapool\Foundation\User']->getUserOptions(array(),$recipientMode);
         foreach($optionsArr as $contentKey=>$options){
             $selected=(isset($arr['selector']['Content'][$contentKey]))?$arr['selector']['Content'][$contentKey]:'';
             $matrix[$contentKey]['Value']=$this->oc['SourcePot\Datapool\Tools\HTMLbuilder']->select(array('options'=>$options,'selected'=>$selected,'keep-element-content'=>TRUE,'key'=>array('Content',$contentKey),'style'=>array(),'callingClass'=>$arr['callingClass'],'callingFunction'=>$arr['callingFunction']));
