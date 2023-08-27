@@ -118,6 +118,7 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
         if (isset($piEntry['Content']['timestamp'])){
             $piEntry['Date']=$this->oc['SourcePot\Datapool\Tools\MiscTools']->getDateTime('@'.$piEntry['Content']['timestamp'],FALSE,$this->pageSettings['pageTimeZone']);
         }
+        $piEntry['Owner']='SYSTEM';
         $fileArr=current($_FILES);
         if ($fileArr){
             // has attached file
@@ -183,7 +184,7 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
      */
     private function getDistinctGroupsAndFolders(){
         $this->distinctGroupsAndFolders=array();
-        $selector=array('Source'=>$this->entryTable,'Type'=>'%piStatus%');
+        $selector=array('Source'=>$this->entryTable,'Type'=>'%pi%');
         foreach($this->oc['SourcePot\Datapool\Foundation\Database']->getDistinct($selector,'Group',FALSE,'Read','Group',TRUE,FALSE,FALSE,FALSE) as $group){
             $groupSelector=$selector;
             $groupSelector['Group']=$group['Group'];
