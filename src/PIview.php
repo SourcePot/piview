@@ -54,19 +54,56 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
 		} else {
             $html=$this->groupSelectorAndStatusHtml($arr);
             $html.=$this->getSectionsHtml($arr);
-            $html.=$this->getPiEventsChart();
+            // add event chart
+            $selector=$this->oc['SourcePot\Datapool\Tools\NetworkTools']->getPageState(__CLASS__);
+            $settings=array('classWithNamespace'=>__CLASS__,'method'=>'getPiViewEventsChart','width'=>600);
+            $html.=$this->oc['SourcePot\Datapool\Foundation\Container']->container('PI view events','generic',$selector,$settings,array());    
+            // finalize page
             $arr['toReplace']['{{content}}']=$html;
 			return $arr;
 		}
 	}
     
-    private function getPiEventsChart(){
-        $selector=$this->oc['SourcePot\Datapool\Tools\NetworkTools']->getPageState(__CLASS__);
-        $settings=array('classWithNamespace'=>'SourcePot\Datapool\Foundation\Container','method'=>'getEventChart','width'=>600);
+    public function getPiViewEventsChart($arr){
+        if (!isset($arr['html'])){$arr['html']='';}
+        // init settings
+        $settingOptions=array('timespan'=>array('600'=>'10min','3600'=>'1hr','43200'=>'12hrs','86400'=>'1day'),
+                              'width'=>array(300=>'300px',600=>'600px',1200=>'1200px'),
+                              'height'=>array(300=>'300px',600=>'600px',1200=>'1200px'),
+                              );
+        foreach($settingOptions as $settingKey=>$options){
+            if (!isset($arr['settings'][$settingKey])){$arr['settings'][$settingKey]=key($options);}
+        }
+        // process form
+        $formData=$this->oc['SourcePot\Datapool\Foundation\Element']->formProcessing($arr['callingClass'],$arr['callingFunction']);
+        if (!empty($formData['cmd'])){
+            $arr['settings']=array_merge($arr['settings'],$formData['val']['settings']);
+        }
+        // get instance of EventChart
+        require_once($GLOBALS['dirs']['php'].'Foundation/charts/EventChart.php');
+        $chart=new \SourcePot\Datapool\Foundation\Charts\EventChart($this->oc,$arr['settings']);
+        // get selectors
+        $selector=array('Source'=>$arr['selector']['Source']);
+        $selector['Group']=(isset($arr['selector']['Group']))?$arr['selector']['Group']:FALSE;
+        foreach($this->oc['SourcePot\Datapool\Foundation\Database']->entryIterator($selector,FALSE,'Read','Date') as $entry){
+            if (!isset($entry['Content']['activity'])){continue;}
+            $activity=intval($entry['Content']['activity']);
+            $event=array('name'=>ucfirst($entry['Group']).'|'.$entry['Folder'],'timestamp'=>$entry['Content']['timestamp'],'value'=>$activity);
+            $chart->addEvent($event);
+        }
+        if (empty($entry)){return $arr;}
         // compile html
-        $html='';
-        $html.=$this->oc['SourcePot\Datapool\Foundation\Container']->container('PI view events','generic',$selector,$settings,array());    
-        return $html;    
+        $arr['html'].=$chart->getChart(ucfirst($arr['selector']['Source']));
+        $cntrArr=array('callingClass'=>$arr['callingClass'],'callingFunction'=>$arr['callingFunction'],'excontainer'=>FALSE);
+        $matrix=array('Cntr'=>array());
+        foreach($settingOptions as $settingKey=>$options){
+            $cntrArr['options']=$options;
+            $cntrArr['selected']=$arr['settings'][$settingKey];
+            $cntrArr['key']=array('settings',$settingKey);
+            $matrix['Cntr'][$settingKey]=$this->oc['SourcePot\Datapool\Tools\HTMLbuilder']->select($cntrArr);
+        }
+        $arr['html'].=$this->oc['SourcePot\Datapool\Tools\HTMLbuilder']->table(array('matrix'=>$matrix,'style'=>'clear:left;','hideHeader'=>FALSE,'hideKeys'=>TRUE,'keep-element-content'=>TRUE));
+        return $arr;
     }
     
     /**
@@ -77,11 +114,9 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
         $debugArr=array('arr'=>$arr,'_FILES'=>$_FILES);
         $piEntry=$this->oc['SourcePot\Datapool\Tools\MiscTools']->flat2arr($arr,'||');
         $piEntry['Source']=$this->entryTable;
+        $piEntry=$this->oc['SourcePot\Datapool\Foundation\Access']->addRights($piEntry,'SENTINEL_R','SENTINEL_R');
         if (isset($piEntry['Content']['timestamp'])){
-            $piEntryDateTime=new \DateTime('@'.$piEntry['Content']['timestamp']);
-            $serverTimezone=new \DateTimeZone($this->pageSettings['pageTimeZone']);
-            $piEntryDateTime->setTimezone($serverTimezone);
-            $piEntry['Date']=$piEntryDateTime->format('Y-m-d H:i:s');
+            $piEntry['Date']=$this->oc['SourcePot\Datapool\Tools\MiscTools']->getDateTime('@'.$piEntry['Content']['timestamp'],FALSE,$this->pageSettings['pageTimeZone']);
         }
         $fileArr=current($_FILES);
         if ($fileArr){
@@ -267,7 +302,8 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
     private function getPiSetting($selector){
         $piEntry=$this->getPiSettingSelector($selector);
         $piEntry=$this->oc['SourcePot\Datapool\Tools\MiscTools']->addEntryId($piEntry,array('Group','Folder','Name','Type'),0);
-		$piEntry['Content']=array('mode'=>'capturing','captureTime'=>3600,'light'=>0,'alarm'=>0);
+        $piEntry=$this->oc['SourcePot\Datapool\Foundation\Access']->addRights($piEntry,'SENTINEL_R','SENTINEL_R');
+        $piEntry['Content']=array('mode'=>'capturing','captureTime'=>3600,'light'=>0,'alarm'=>0);
         $piEntry['Expires']='2999-01-01 01:00:00';
         return $this->oc['SourcePot\Datapool\Foundation\Database']->entryByIdCreateIfMissing($piEntry,TRUE);
     }
