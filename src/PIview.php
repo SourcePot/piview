@@ -23,7 +23,6 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
 	private $entryTemplate=array();
     
     private $distinctGroupsAndFolders=array();
-    private $piSettings=array();
     
     private $pageSettings=array();
 
@@ -52,60 +51,24 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
 		if ($arr===TRUE){
 			return array('Category'=>'Apps','Emoji'=>'&Pi;','Label'=>'PI view','Read'=>'ALL_MEMBER_R','Class'=>__CLASS__);
 		} else {
-            $html=$this->groupSelectorAndStatusHtml($arr);
-            $html.=$this->getSectionsHtml($arr);
-            // add event chart
+            // selector html
+            $htmlSelector=$this->groupSelectorHtml($arr);
             $selector=$this->oc['SourcePot\Datapool\Tools\NetworkTools']->getPageState(__CLASS__);
+            $genSelector=array('Source'=>$selector['Source'],
+                               'Group'=>((isset($selector['Group']))?$selector['Group']:FALSE),
+                               'Folder'=>((isset($selector['Folder']))?$selector['Folder']:FALSE),
+                               );
+            // add event chart
             $settings=array('classWithNamespace'=>__CLASS__,'method'=>'getPiViewEventsChart','width'=>600);
-            $html.=$this->oc['SourcePot\Datapool\Foundation\Container']->container('PI view events','generic',$selector,$settings,array());    
+            $htmlEventChart=$this->oc['SourcePot\Datapool\Foundation\Container']->container('PI view events','generic',$genSelector,$settings,array());    
+            // sections
+            $htmlSections=$this->getSectionsHtml($arr);
             // finalize page
-            $arr['toReplace']['{{content}}']=$html;
+            $arr['toReplace']['{{content}}']=$htmlSelector.$htmlSections.$htmlEventChart;
 			return $arr;
 		}
 	}
-    
-    public function getPiViewEventsChart($arr){
-        if (!isset($arr['html'])){$arr['html']='';}
-        // init settings
-        $settingOptions=array('timespan'=>array('600'=>'10min','3600'=>'1hr','43200'=>'12hrs','86400'=>'1day'),
-                              'width'=>array(300=>'300px',600=>'600px',1200=>'1200px'),
-                              'height'=>array(300=>'300px',600=>'600px',1200=>'1200px'),
-                              );
-        foreach($settingOptions as $settingKey=>$options){
-            if (!isset($arr['settings'][$settingKey])){$arr['settings'][$settingKey]=key($options);}
-        }
-        // process form
-        $formData=$this->oc['SourcePot\Datapool\Foundation\Element']->formProcessing($arr['callingClass'],$arr['callingFunction']);
-        if (!empty($formData['cmd'])){
-            $arr['settings']=array_merge($arr['settings'],$formData['val']['settings']);
-        }
-        // get instance of EventChart
-        require_once($GLOBALS['dirs']['php'].'Foundation/charts/EventChart.php');
-        $chart=new \SourcePot\Datapool\Foundation\Charts\EventChart($this->oc,$arr['settings']);
-        // get selectors
-        $selector=array('Source'=>$arr['selector']['Source']);
-        $selector['Group']=(isset($arr['selector']['Group']))?$arr['selector']['Group']:FALSE;
-        foreach($this->oc['SourcePot\Datapool\Foundation\Database']->entryIterator($selector,FALSE,'Read','Date') as $entry){
-            if (!isset($entry['Content']['activity'])){continue;}
-            $activity=intval($entry['Content']['activity']);
-            $event=array('name'=>ucfirst($entry['Group']).'|'.$entry['Folder'],'timestamp'=>$entry['Content']['timestamp'],'value'=>$activity);
-            $chart->addEvent($event);
-        }
-        if (empty($entry)){return $arr;}
-        // compile html
-        $arr['html'].=$chart->getChart(ucfirst($arr['selector']['Source']));
-        $cntrArr=array('callingClass'=>$arr['callingClass'],'callingFunction'=>$arr['callingFunction'],'excontainer'=>FALSE);
-        $matrix=array('Cntr'=>array());
-        foreach($settingOptions as $settingKey=>$options){
-            $cntrArr['options']=$options;
-            $cntrArr['selected']=$arr['settings'][$settingKey];
-            $cntrArr['key']=array('settings',$settingKey);
-            $matrix['Cntr'][$settingKey]=$this->oc['SourcePot\Datapool\Tools\HTMLbuilder']->select($cntrArr);
-        }
-        $arr['html'].=$this->oc['SourcePot\Datapool\Tools\HTMLbuilder']->table(array('matrix'=>$matrix,'style'=>'clear:left;','hideHeader'=>FALSE,'hideKeys'=>TRUE,'keep-element-content'=>TRUE));
-        return $arr;
-    }
-    
+
     /**
      * Takes the client data, e.g. from a Raspberry Pi ($arr argument) and creates a database entry
      */
@@ -118,7 +81,7 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
         if (isset($piEntry['Content']['timestamp'])){
             $piEntry['Date']=$this->oc['SourcePot\Datapool\Tools\MiscTools']->getDateTime('@'.$piEntry['Content']['timestamp'],FALSE,$this->pageSettings['pageTimeZone']);
         }
-        $piEntry['Owner']='SYSTEM';
+        $piEntry['Owner']=$_SESSION['currentUser']['EntryId'];
         $fileArr=current($_FILES);
         if ($fileArr){
             // has attached file
@@ -127,9 +90,12 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
             $debugArr['entry_updated']=$this->oc['SourcePot\Datapool\Foundation\Filespace']->file2entries($fileArr,$piEntry);
         } else {
             // no attached file
+            $piEntry['Date']=$this->oc['SourcePot\Datapool\Tools\MiscTools']->getDateTime();
             $piEntry['Expires']=(isset($arr['Expires']))?$arr['Expires']:$this->oc['SourcePot\Datapool\Tools\MiscTools']->getDateTime('now','P1D');
             $piEntry=$this->oc['SourcePot\Datapool\Foundation\Database']->unifyEntry($piEntry);
-			$debugArr['entry_updated']=$this->oc['SourcePot\Datapool\Foundation\Database']->updateEntry($piEntry);
+			$piEntry=$this->oc['SourcePot\Datapool\Tools\MiscTools']->addEntryId($piEntry,array('Group','Folder','Type'),0);
+            $debugArr['entry_to_update']=$piEntry;
+            $debugArr['entry_updated']=$this->oc['SourcePot\Datapool\Foundation\Database']->updateEntry($piEntry);
         }
         // return pi setting
         $piSetting=$this->getPiSetting($piEntry);
@@ -137,6 +103,7 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
         $answer=$this->oc['SourcePot\Datapool\Tools\MiscTools']->arr2flat($piSetting,'||');
         if ($isDebugging){
             $debugArr['answer']=$answer;
+            $debugArr['currentUser']=$this->oc['SourcePot\Datapool\Foundation\User']->getCurrentUser();
             $this->oc['SourcePot\Datapool\Tools\MiscTools']->arr2file($debugArr);
         }
         return $answer;
@@ -178,7 +145,49 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
             } // if activity greater activity threshold
         } // if message or alarm mode
     }
-    
+
+    public function getPiViewEventsChart($arr){
+        if (!isset($arr['html'])){$arr['html']='';}
+        // init settings
+        $settingOptions=array('timespan'=>array('600'=>'10min','3600'=>'1hr','43200'=>'12hrs','86400'=>'1day'),
+                              'width'=>array(300=>'300px',600=>'600px',1200=>'1200px'),
+                              'height'=>array(300=>'300px',600=>'600px',1200=>'1200px'),
+                              );
+        foreach($settingOptions as $settingKey=>$options){
+            if (!isset($arr['settings'][$settingKey])){$arr['settings'][$settingKey]=key($options);}
+        }
+        // process form
+        $formData=$this->oc['SourcePot\Datapool\Foundation\Element']->formProcessing($arr['callingClass'],$arr['callingFunction']);
+        if (!empty($formData['cmd'])){
+            $arr['settings']=array_merge($arr['settings'],$formData['val']['settings']);
+        }
+        // get instance of EventChart
+        require_once($GLOBALS['dirs']['php'].'Foundation/charts/EventChart.php');
+        $chart=new \SourcePot\Datapool\Foundation\Charts\EventChart($this->oc,$arr['settings']);
+        // get selectors
+        $selector=array('Source'=>$arr['selector']['Source']);
+        $selector['Group']=(isset($arr['selector']['Group']))?$arr['selector']['Group']:FALSE;
+        foreach($this->oc['SourcePot\Datapool\Foundation\Database']->entryIterator($selector,FALSE,'Read','Date') as $entry){
+            if (!isset($entry['Content']['activity'])){continue;}
+            $activity=intval($entry['Content']['activity']);
+            $event=array('name'=>ucfirst($entry['Group']).'|'.$entry['Folder'],'timestamp'=>$entry['Content']['timestamp'],'value'=>$activity);
+            $chart->addEvent($event);
+        }
+        if (empty($entry)){return $arr;}
+        // compile html
+        $arr['html'].=$chart->getChart(ucfirst($arr['selector']['Source']));
+        $cntrArr=array('callingClass'=>$arr['callingClass'],'callingFunction'=>$arr['callingFunction'],'excontainer'=>FALSE);
+        $matrix=array('Cntr'=>array());
+        foreach($settingOptions as $settingKey=>$options){
+            $cntrArr['options']=$options;
+            $cntrArr['selected']=$arr['settings'][$settingKey];
+            $cntrArr['key']=array('settings',$settingKey);
+            $matrix['Cntr'][$settingKey]=$this->oc['SourcePot\Datapool\Tools\HTMLbuilder']->select($cntrArr);
+        }
+        $arr['html'].=$this->oc['SourcePot\Datapool\Tools\HTMLbuilder']->table(array('matrix'=>$matrix,'style'=>'clear:left;','hideHeader'=>FALSE,'hideKeys'=>TRUE,'keep-element-content'=>TRUE));
+        return $arr;
+    }
+        
     /**
      * Load client structure, Groups and Folders into class property distinctGroupsAndFolders
      */
@@ -198,15 +207,14 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
     /**
      * Status overview re all clients and Group selection
      */
-    private function groupSelectorAndStatusHtml($arr,$isDebugging=FALSE){
+    private function groupSelectorHtml($arr,$isDebugging=FALSE){
         $debugArr=array();
         $html='';
         // get group selector
         foreach($this->distinctGroupsAndFolders as $group=>$folderArr){
             $selector=current($folderArr);
             unset($selector['Folder']);
-            $statusHtml=$this->oc['SourcePot\Datapool\Foundation\Container']->container('PI status '.$group,'generic',$selector,array('method'=>'getPiStatusHtml','classWithNamespace'=>__CLASS__),array('style'=>array('border'=>'none')));
-            $statusHtml.=$this->oc['SourcePot\Datapool\Tools\HTMLbuilder']->element(array('tag'=>'button','element-content'=>'Select '.$selector['Group'],'keep-element-content'=>TRUE,'key'=>array('select',$selector['Group']),'callingClass'=>__CLASS__,'callingFunction'=>__FUNCTION__));
+            $statusHtml=$this->oc['SourcePot\Datapool\Tools\HTMLbuilder']->element(array('tag'=>'button','element-content'=>'Select '.$selector['Group'],'keep-element-content'=>TRUE,'key'=>array('select',$selector['Group']),'callingClass'=>__CLASS__,'callingFunction'=>__FUNCTION__));
 		    $html.=$this->oc['SourcePot\Datapool\Tools\HTMLbuilder']->element(array('tag'=>'div','element-content'=>$statusHtml,'keep-element-content'=>TRUE,'style'=>array('clear'=>'none','margin'=>'10px')));
         }
         $html=$this->oc['SourcePot\Datapool\Tools\HTMLbuilder']->element(array('tag'=>'article','element-content'=>$html,'keep-element-content'=>TRUE));    
@@ -225,46 +233,7 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
         }
         return $html;
     }
-    
-    /**
-     * Pi status container plugin
-     */
-    public function getPiStatusHtml($arr,$isDebugging=FALSE){
-        $debugArr=array('arr in'=>$arr);
-        $definition=array('Date'=>array('@tag'=>'p','@default'=>'','@excontainer'=>TRUE),
-                          'Content'=>array('cpuTemperature'=>array('@tag'=>'p','@default'=>'','@excontainer'=>TRUE),
-                                           'mode'=>array('@tag'=>'p','@default'=>'','@excontainer'=>TRUE),
-                                           'light'=>array('@tag'=>'p','@default'=>'','@excontainer'=>TRUE),
-                                           'alarm'=>array('@tag'=>'p','@default'=>'','@excontainer'=>TRUE),
-                                           'activity'=>array('@tag'=>'p','@default'=>'','@excontainer'=>TRUE),
-                                          ),
-                         );
-        $flatDefinition=$this->oc['SourcePot\Datapool\Tools\MiscTools']->arr2flat($definition);
-        $arr['html']='';
-        $matrix=array();
-        foreach($this->distinctGroupsAndFolders[$arr['selector']['Group']] as $folder=>$selector){
-            $selector['Type']='%piStatus%';
-            foreach($this->oc['SourcePot\Datapool\Foundation\Database']->entryIterator($selector,FALSE,'Read','Date',FALSE,1,0,array(),TRUE,FALSE) as $piEntry){
-                $debugArr['most current entries'][]=$piEntry;
-                $flatPiEntry=$this->oc['SourcePot\Datapool\Tools\MiscTools']->arr2flat($piEntry);
-                foreach($flatPiEntry as $flatKey=>$value){
-                    $sepPos=intval(strrpos($flatKey,$this->oc['SourcePot\Datapool\Tools\MiscTools']->getSeparator()));
-                    $column=trim(substr($flatKey,$sepPos),'|[]');
-                    $element=$this->oc['SourcePot\Datapool\Foundation\Definitions']->selectorKey2element($piEntry,$flatKey,$value,__CLASS__,__FUNCTION__,TRUE,array('Content'=>$definition));    
-                    if (!empty($element)){
-                        $matrix[$folder][$column]=$element;
-                    }
-                }
-            }
-        } // loop through folder
-        $arr['html'].=$this->oc['SourcePot\Datapool\Tools\HTMLbuilder']->table(array('matrix'=>$matrix,'hideHeader'=>FALSE,'hideKeys'=>FALSE,'caption'=>$arr['selector']['Group'],'keep-element-content'=>TRUE));
-        if ($isDebugging){
-            $debugArr['distinctGroupsAndFolders']=$this->distinctGroupsAndFolders;
-            $this->oc['SourcePot\Datapool\Tools\MiscTools']->arr2file($debugArr);
-        }
-        return $arr;
-    }    
-   
+       
     /**
      * PI client control and view
      */
@@ -285,7 +254,13 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
                 $imgShuffle['selector']=$entrySelector;
                 $imgShuffle['selector']['Type']='%piMedia%';
                 $folderHtml.=$this->oc['SourcePot\Datapool\Foundation\Container']->container('CCTV '.$imgShuffle['selector']['Folder'],'getImageShuffle',$imgShuffle['selector'],$imgShuffle['setting'],$imgShuffle['wrapperSetting']);
-                $folderHtml.=$this->oc['SourcePot\Datapool\Foundation\Container']->container('PI settings '.$selected['Group'].'|'.$folder,'generic',$imgShuffle['selector'],array('method'=>'getPiSettingsHtml','classWithNamespace'=>__CLASS__),array('style'=>array('float'=>'left','clear'=>'right','width'=>'fit-content','border'=>'none','margin'=>'0')));
+                $settingSelector=$entrySelector;
+                $settingSelector['Type']='piSetting';
+                $settingSelector['disableAutoRefresh']=TRUE;
+                $folderHtml.=$this->oc['SourcePot\Datapool\Foundation\Container']->container('PI settings '.$selected['Group'].'|'.$folder,'generic',$settingSelector,array('method'=>'getPiSettingsHtml','classWithNamespace'=>__CLASS__),array('style'=>array('float'=>'left','clear'=>'right','width'=>'fit-content','border'=>'none','margin'=>'0')));
+                $statusSelector=$entrySelector;
+                $statusSelector['Type']='piStatus';
+                $folderHtml.=$this->oc['SourcePot\Datapool\Foundation\Container']->container('PI status '.$selected['Group'].'|'.$folder,'generic',$statusSelector,array('method'=>'getPiStatusHtml','classWithNamespace'=>__CLASS__),array('style'=>array('float'=>'left','clear'=>'right','width'=>'fit-content','border'=>'none','margin'=>'0')));
                 $html.=$this->oc['SourcePot\Datapool\Tools\HTMLbuilder']->element(array('tag'=>'article','element-content'=>$folderHtml,'keep-element-content'=>TRUE));
             } // loop through folders
         }
@@ -297,12 +272,13 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
      */
     private function getPiSettingSelector($selector){
         $template=array('Source'=>$this->entryTable,'Type'=>'piSetting','Name'=>'Pi entry');
-        return array_merge($selector,$template);
+        $selector=array_merge($selector,$template);
+        $selector=$this->oc['SourcePot\Datapool\Tools\MiscTools']->addEntryId($selector,array('Group','Folder','Name','Type'),0);
+        return $selector;
     }
     
     private function getPiSetting($selector){
         $piEntry=$this->getPiSettingSelector($selector);
-        $piEntry=$this->oc['SourcePot\Datapool\Tools\MiscTools']->addEntryId($piEntry,array('Group','Folder','Name','Type'),0);
         $piEntry=$this->oc['SourcePot\Datapool\Foundation\Access']->addRights($piEntry,'SENTINEL_R','SENTINEL_R');
         $piEntry['Content']=array('mode'=>'capturing','captureTime'=>3600,'light'=>0,'alarm'=>0);
         $piEntry['Expires']='2999-01-01 01:00:00';
@@ -335,9 +311,44 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
         $matrix=array();
         foreach($optionsArr as $contentKey=>$options){
             $selected=(isset($arr['selector']['Content'][$contentKey]))?$arr['selector']['Content'][$contentKey]:'';
-            $matrix[$contentKey]['Value']=$this->oc['SourcePot\Datapool\Tools\HTMLbuilder']->select(array('options'=>$options,'selected'=>$selected,'keep-element-content'=>TRUE,'key'=>array('Content',$contentKey),'style'=>array(),'callingClass'=>$arr['callingClass'],'callingFunction'=>$arr['callingFunction']));
+            $matrix[$contentKey]['Preset']=$this->oc['SourcePot\Datapool\Tools\HTMLbuilder']->select(array('options'=>$options,'selected'=>$selected,'keep-element-content'=>TRUE,'key'=>array('Content',$contentKey),'style'=>array(),'callingClass'=>$arr['callingClass'],'callingFunction'=>$arr['callingFunction']));
         }
-        $arr['html'].=$this->oc['SourcePot\Datapool\Tools\HTMLbuilder']->table(array('matrix'=>$matrix,'hideHeader'=>TRUE,'hideKeys'=>FALSE,'caption'=>$arr['selector']['Folder'],'keep-element-content'=>TRUE));
+        $arr['html'].=$this->oc['SourcePot\Datapool\Tools\HTMLbuilder']->table(array('matrix'=>$matrix,'hideHeader'=>FALSE,'hideKeys'=>FALSE,'caption'=>$arr['selector']['Folder'],'keep-element-content'=>TRUE));
+        return $arr;
+    }
+    
+    /**
+     * Pi status container plugin
+     */
+    public function getPiStatusHtml($arr,$isDebugging=FALSE){
+        $debugArr=array('arr in'=>$arr);
+        $definition=array('Date'=>array('@tag'=>'p','@default'=>'','@excontainer'=>TRUE),
+                          'Content'=>array('cpuTemperature'=>array('@tag'=>'p','@default'=>'','@excontainer'=>TRUE),
+                                           'mode'=>array('@tag'=>'p','@default'=>'','@excontainer'=>TRUE),
+                                           'light'=>array('@tag'=>'p','@default'=>'','@excontainer'=>TRUE),
+                                           'alarm'=>array('@tag'=>'p','@default'=>'','@excontainer'=>TRUE),
+                                           'activity'=>array('@tag'=>'p','@default'=>'','@excontainer'=>TRUE),
+                                          ),
+                         );
+        $flatDefinition=$this->oc['SourcePot\Datapool\Tools\MiscTools']->arr2flat($definition);
+        $arr['html']='';
+        $matrix=array();
+        foreach($this->oc['SourcePot\Datapool\Foundation\Database']->entryIterator($arr['selector'],FALSE,'Read','Date',FALSE,1,0,array(),TRUE,FALSE) as $piEntry){
+            $debugArr['most current entries'][]=$piEntry;
+            $flatPiEntry=$this->oc['SourcePot\Datapool\Tools\MiscTools']->arr2flat($piEntry);
+            foreach($flatPiEntry as $flatKey=>$value){
+                $sepPos=intval(strrpos($flatKey,$this->oc['SourcePot\Datapool\Tools\MiscTools']->getSeparator()));
+                $column=trim(substr($flatKey,$sepPos),'|[]');
+                $element=$this->oc['SourcePot\Datapool\Foundation\Definitions']->selectorKey2element($piEntry,$flatKey,$value,__CLASS__,__FUNCTION__,TRUE,array('Content'=>$definition));    
+                if (!empty($element)){
+                    $matrix[$folder][$column]=$element;
+                }
+            }
+        }
+        $arr['html'].=$this->oc['SourcePot\Datapool\Tools\HTMLbuilder']->table(array('matrix'=>$matrix,'hideHeader'=>FALSE,'hideKeys'=>FALSE,'caption'=>$arr['selector']['Group'],'keep-element-content'=>TRUE));
+        if ($isDebugging){
+            $this->oc['SourcePot\Datapool\Tools\MiscTools']->arr2file($debugArr);
+        }
         return $arr;
     }
 }
