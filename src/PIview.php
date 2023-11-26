@@ -140,7 +140,7 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
                         $this->oc['SourcePot\Datapool\Foundation\Logging']->addLog(array('msg'=>'Failed to send message: transmitter not valid','priority'=>14,'callingClass'=>__CLASS__,'callingFunction'=>__FUNCTION__));
                     } // if valid transmitter
                 } else {
-                    $this->oc['SourcePot\Datapool\Foundation\Logging']->addLog(array('msg'=>'Failed to send message: message sent already '.$age.'sec ago','priority'=>11,'callingClass'=>__CLASS__,'callingFunction'=>__FUNCTION__));
+                    $this->oc['SourcePot\Datapool\Foundation\Logging']->addLog(array('msg'=>'Failed to send message: message sent already '.$age.'sec ago','priority'=>10,'callingClass'=>__CLASS__,'callingFunction'=>__FUNCTION__));
                 } // if new message
             } // if activity greater activity threshold
         } // if message or alarm mode
@@ -149,10 +149,14 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
     public function getPiViewEventsChart($arr){
         if (!isset($arr['html'])){$arr['html']='';}
         // init settings
-        $settingOptions=array('timespan'=>array('600'=>'10min','3600'=>'1hr','43200'=>'12hrs','86400'=>'1day'),
+        $settingOptions=array('date'=>array(),
                               'width'=>array(300=>'300px',600=>'600px',1200=>'1200px'),
-                              'height'=>array(300=>'300px',600=>'600px',1200=>'1200px'),
+                              'height'=>array(50=>'50px',100=>'100px',150=>'150px'),
                               );
+        for($day=0;$day<4;$day++){
+            $timestamp=date('Y-m-d',time()-$day*86400);
+            $settingOptions['date'][$timestamp]=$timestamp;
+        }
         foreach($settingOptions as $settingKey=>$options){
             if (!isset($arr['settings'][$settingKey])){$arr['settings'][$settingKey]=key($options);}
         }
@@ -161,21 +165,19 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
         if (!empty($formData['cmd'])){
             $arr['settings']=array_merge($arr['settings'],$formData['val']['settings']);
         }
-        // get instance of EventChart
-        require_once($GLOBALS['dirs']['php'].'Foundation/charts/EventChart.php');
-        $chart=new \SourcePot\Datapool\Foundation\Charts\EventChart($this->oc,$arr['settings']);
         // get selectors
+        $events=array();
         $selector=array('Source'=>$arr['selector']['Source']);
         $selector['Group']=(isset($arr['selector']['Group']))?$arr['selector']['Group']:FALSE;
         foreach($this->oc['SourcePot\Datapool\Foundation\Database']->entryIterator($selector,FALSE,'Read','Date') as $entry){
-            if (!isset($entry['Content']['activity'])){continue;}
-            $activity=intval($entry['Content']['activity']);
-            $event=array('name'=>ucfirst($entry['Group']).'|'.$entry['Folder'],'timestamp'=>$entry['Content']['timestamp'],'value'=>$activity);
-            $chart->addEvent($event);
+            if (!isset($entry['Content']['activity']) || empty($entry['Content']['timestamp'])){continue;}
+            if (date('Y-m-d',intval($entry['Content']['timestamp']))!==$arr['settings']['date']){continue;}
+            $signalName=ucfirst($entry['Group']).' | '.$entry['Folder'];
+            $events[]=array($signalName=>$entry['Content']['activity'],'timestamp'=>$entry['Content']['timestamp']);
         }
-        if (empty($entry)){return $arr;}
         // compile html
-        $arr['html'].=$chart->getChart(ucfirst($arr['selector']['Source']));
+        $styles=array('plot'=>array('width'=>$arr['settings']['width'],'height'=>$arr['settings']['height']));
+        $arr['html'].=$this->oc['SourcePot\Datapool\Tools\HTMLbuilder']->simpleEventChart($events,$styles);
         $cntrArr=array('callingClass'=>$arr['callingClass'],'callingFunction'=>$arr['callingFunction'],'excontainer'=>FALSE);
         $matrix=array('Cntr'=>array());
         foreach($settingOptions as $settingKey=>$options){
