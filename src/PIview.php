@@ -134,13 +134,13 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
                         $sentEntriesCount=$this->oc[$piSetting['Content']['Transmitter']]->send($piSetting['Content']['Recipient'],$transmissionEntry);
                         if ($sentEntriesCount){
                             $this->oc['SourcePot\Datapool\Foundation\Database']->updateEntry($transmissionEntry,TRUE);
-                            $this->oc['SourcePot\Datapool\Foundation\Logging']->addLog(array('msg'=>'Message sent','priority'=>12,'callingClass'=>__CLASS__,'callingFunction'=>__FUNCTION__));
+                            $this->oc['SourcePot\Datapool\Foundation\Logger']->log('notice','Message sent');
                         } // if message was sent
                     } else {
-                        $this->oc['SourcePot\Datapool\Foundation\Logging']->addLog(array('msg'=>'Failed to send message: transmitter not valid','priority'=>14,'callingClass'=>__CLASS__,'callingFunction'=>__FUNCTION__));
+                        $this->oc['SourcePot\Datapool\Foundation\Logger']->log('error','Failed to send message: transmitter not valid');
                     } // if valid transmitter
                 } else {
-                    $this->oc['SourcePot\Datapool\Foundation\Logging']->addLog(array('msg'=>'Failed to send message: message sent already '.$age.'sec ago','priority'=>10,'callingClass'=>__CLASS__,'callingFunction'=>__FUNCTION__));
+                    $this->oc['SourcePot\Datapool\Foundation\Logger']->log('info','Failed to send message: message sent already {age}sec ago',array('age'=>$age));
                 } // if new message
             } // if activity greater activity threshold
         } // if message or alarm mode
