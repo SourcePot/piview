@@ -79,7 +79,7 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
         $piEntry['Source']=$this->entryTable;
         $piEntry=$this->oc['SourcePot\Datapool\Foundation\Access']->addRights($piEntry,'SENTINEL_R','SENTINEL_R');
         if (isset($piEntry['Content']['timestamp'])){
-            $piEntry['Date']=$this->oc['SourcePot\Datapool\Tools\MiscTools']->getDateTime('@'.$piEntry['Content']['timestamp'],FALSE,$this->pageSettings['pageTimeZone']);
+            $piEntry['Date']=$this->oc['SourcePot\Datapool\Tools\MiscTools']->getDateTime('@'.$piEntry['Content']['timestamp'],'',$this->pageSettings['pageTimeZone']);
         }
         $piEntry['Owner']=$_SESSION['currentUser']['EntryId'];
         $fileArr=current($_FILES);
@@ -134,13 +134,13 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
                         $sentEntriesCount=$this->oc[$piSetting['Content']['Transmitter']]->send($piSetting['Content']['Recipient'],$transmissionEntry);
                         if ($sentEntriesCount){
                             $this->oc['SourcePot\Datapool\Foundation\Database']->updateEntry($transmissionEntry,TRUE);
-                            $this->oc['SourcePot\Datapool\Foundation\Logger']->log('notice','Message sent');
+                            $this->oc['logger']->log('notice','Message sent');
                         } // if message was sent
                     } else {
-                        $this->oc['SourcePot\Datapool\Foundation\Logger']->log('error','Failed to send message: transmitter not valid');
+                        $this->oc['logger']->log('error','Failed to send message: transmitter not valid');
                     } // if valid transmitter
                 } else {
-                    $this->oc['SourcePot\Datapool\Foundation\Logger']->log('info','Failed to send message: message sent already {age}sec ago',array('age'=>$age));
+                    $this->oc['logger']->log('info','Failed to send message: message sent already {age}sec ago',array('age'=>$age));
                 } // if new message
             } // if activity greater activity threshold
         } // if message or alarm mode
