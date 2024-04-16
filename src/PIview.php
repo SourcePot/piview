@@ -165,19 +165,20 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
         if (!empty($formData['cmd'])){
             $arr['settings']=array_merge($arr['settings'],$formData['val']['settings']);
         }
-        // get selectors
-        $events=array();
-        $selector=array('Source'=>$arr['selector']['Source']);
-        $selector['Group']=(isset($arr['selector']['Group']))?$arr['selector']['Group']:FALSE;
-        foreach($this->oc['SourcePot\Datapool\Foundation\Database']->entryIterator($selector,FALSE,'Read','Date') as $entry){
-            if (!isset($entry['Content']['activity']) || empty($entry['Content']['timestamp'])){continue;}
-            if (date('Y-m-d',intval($entry['Content']['timestamp']))!==$arr['settings']['date']){continue;}
-            $signalName=ucfirst($entry['Group']).' | '.$entry['Folder'];
-            $events[]=array($signalName=>$entry['Content']['activity'],'timestamp'=>$entry['Content']['timestamp']);
-        }
         // compile html
-        $styles=array('plot'=>array('width'=>$arr['settings']['width'],'height'=>$arr['settings']['height']));
-        $arr['html'].=$this->oc['SourcePot\Datapool\Tools\HTMLbuilder']->simpleEventChart($events,$styles);
+        $plotDef=array('plotProp'=>array('width'=>$arr['settings']['width'],'height'=>$arr['settings']['height']));
+        $trace=$this->oc['SourcePot\Datapool\Tools\HTMLbuilder']->getTraceTemplate();
+        foreach($this->distinctGroupsAndFolders as $Group=>$folderArr){
+            foreach($folderArr as $Folder=>$selector){
+                $trace['Name']=$Group.' | '.$Folder;
+                $trace['selector']=$selector;
+                $trace['isSystemCall']=TRUE;
+                $trace['x']=array('key'=>'Content|[]|timeStamp','Type'=>'timestamp','Name'=>'Date');
+                $trace['y']=array('key'=>'Content|[]|activity','Type'=>'int','Name'=>'Activity');
+                $arr['html'].=$this->oc['SourcePot\Datapool\Tools\HTMLbuilder']->xyTraces2plot($plotDef,$trace);
+            }
+        }
+        // chart selector
         $cntrArr=array('callingClass'=>$arr['callingClass'],'callingFunction'=>$arr['callingFunction'],'excontainer'=>FALSE);
         $matrix=array('Cntr'=>array());
         foreach($settingOptions as $settingKey=>$options){
