@@ -32,10 +32,15 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
 		$this->entryTable=strtolower(trim($table,'\\'));
 	}
 
-	public function init(array $oc){
-		$this->oc=$oc;
-        $this->pageSettings=$this->oc['SourcePot\Datapool\Foundation\Backbone']->getSettings();
-		$this->entryTemplate=$oc['SourcePot\Datapool\Foundation\Database']->getEntryTemplateCreateTable($this->entryTable,__CLASS__);
+    Public function loadOc(array $oc):void
+    {
+        $this->oc=$oc;
+    }
+
+	public function init()
+    {
+		$this->pageSettings=$this->oc['SourcePot\Datapool\Foundation\Backbone']->getSettings();
+		$this->entryTemplate=$this->oc['SourcePot\Datapool\Foundation\Database']->getEntryTemplateCreateTable($this->entryTable,__CLASS__);
         $this->getDistinctGroupsAndFolders();
 	}
 
@@ -92,8 +97,7 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
             // no attached file
             $piEntry['Date']=$this->oc['SourcePot\Datapool\Tools\MiscTools']->getDateTime();
             $piEntry['Expires']=(isset($arr['Expires']))?$arr['Expires']:$this->oc['SourcePot\Datapool\Tools\MiscTools']->getDateTime('now','P1D');
-            $piEntry=$this->oc['SourcePot\Datapool\Foundation\Database']->unifyEntry($piEntry);
-			$piEntry=$this->oc['SourcePot\Datapool\Tools\MiscTools']->addEntryId($piEntry,array('Group','Folder','Type'),0);
+            $piEntry=$this->oc['SourcePot\Datapool\Tools\MiscTools']->addEntryId($piEntry,array('Group','Folder','Type'),0);
             $debugArr['entry_to_update']=$piEntry;
             $debugArr['entry_updated']=$this->oc['SourcePot\Datapool\Foundation\Database']->updateEntry($piEntry);
         }
@@ -230,7 +234,6 @@ class PIview implements \SourcePot\Datapool\Interfaces\App{
         }
         if ($isDebugging){
             $debugArr['formData']=$formData;
-            $debugArr['groupOptions']=$groupOptions;
             $debugArr['selector']=$selector;
             $this->oc['SourcePot\Datapool\Tools\MiscTools']->arr2file($debugArr);
         }
